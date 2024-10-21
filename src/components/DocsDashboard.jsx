@@ -10,14 +10,39 @@ const DocsDashboard = () => {
     const [docs, setDocs] = useState([]);
     const [selectedDoc, setSelectedDoc] = useState(null);
     const [markdownContent, setMarkdownContent] = useState("");
-    const [isViewerOpen, setViewerOpen] = useState(false); // Control document view visibility
+    const [isViewerOpen, setViewerOpen] = useState(false);
+    const [userMoniker, setUserMoniker] = useState("Contributor");
     const navigate = useNavigate();
 
+    // Fetch user moniker and documents on mount
     useEffect(() => {
         if (!currentUser) {
             navigate("/login");
             return;
         }
+
+        const fetchUserMoniker = async () => {
+            try {
+                console.log(`Fetching user data for UID: ${currentUser.uid}`);
+
+                const userRef = doc(db, "users", currentUser.uid);
+                const userSnap = await getDoc(userRef);
+
+                if (userSnap.exists()) {
+                    const userData = userSnap.data();
+                    console.log("User data fetched:", userData);
+                    setUserMoniker(userData.moniker || "Contributor");
+                } else {
+                    console.warn("User not found.");
+                    setUserMoniker("Contributor");
+                }
+            } catch (error) {
+                console.error("Error fetching user moniker:", error);
+                setUserMoniker("Contributor");
+            }
+        };
+
+        fetchUserMoniker();
 
         const q = query(collection(db, "contributors", currentUser.uid, "projects"));
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -33,18 +58,22 @@ const DocsDashboard = () => {
 
     const handleGenerate = useCallback((content) => {
         setMarkdownContent(content);
-        setViewerOpen(true); // Open the viewer when markdown is generated
+        setViewerOpen(true);
     }, []);
 
     const viewMarkdown = async (docId) => {
-        const docRef = doc(db, "contributors", currentUser.uid, "projects", docId);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-            const { markdownContent } = docSnap.data();
-            setMarkdownContent(markdownContent);
-            setViewerOpen(true); // Open the viewer
-        } else {
-            alert("No markdown found for this document.");
+        try {
+            const docRef = doc(db, "contributors", currentUser.uid, "projects", docId);
+            const docSnap = await getDoc(docRef);
+
+            if (docSnap.exists()) {
+                setMarkdownContent(docSnap.data().markdownContent);
+                setViewerOpen(true);
+            } else {
+                alert("No markdown found for this document.");
+            }
+        } catch (error) {
+            console.error("Error fetching markdown:", error);
         }
     };
 
@@ -70,11 +99,17 @@ const DocsDashboard = () => {
         }
     };
 
+    const generateShareLink = (projectId) => {
+        const link = `${window.location.origin}/docs/${projectId}`;
+        navigator.clipboard.writeText(link);
+        alert("Shareable link copied to clipboard!");
+    };
+
     return (
         <div className="p-8 space-y-8 bg-background text-text min-h-screen">
             <div className="flex justify-between items-center">
                 <h2 className="text-3xl font-bold">
-                    Welcome, {currentUser?.moniker || "Contributor"}!
+                    Welcome, {userMoniker}!
                 </h2>
                 <button
                     onClick={logout}
@@ -145,6 +180,12 @@ const DocsDashboard = () => {
                                     className="px-4 py-2 bg-green-500 text-white rounded"
                                 >
                                     View Markdown
+                                </button>
+                                <button
+                                    onClick={() => generateShareLink(doc.id)}
+                                    className="px-4 py-2 bg-blue-500 text-white rounded"
+                                >
+                                    Share Link
                                 </button>
                             </div>
                         </div>
